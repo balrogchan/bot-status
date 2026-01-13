@@ -107,34 +107,6 @@
       border-radius: 5px;
       color: #c0392b;
     }
-    .manual-input {
-      margin: 20px 0;
-      padding: 20px;
-      background: #e8f5fe;
-      border-radius: 8px;
-      border-left: 4px solid #1da1f2;
-    }
-    .manual-input h3 {
-      margin-top: 0;
-      color: #333;
-    }
-    .input-group {
-      margin: 10px 0;
-    }
-    .input-group label {
-      display: block;
-      margin-bottom: 5px;
-      font-weight: bold;
-      color: #555;
-    }
-    .input-group input {
-      width: 100%;
-      padding: 8px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      font-size: 1em;
-      box-sizing: border-box;
-    }
     .info-box {
       background: #e3f2fd;
       padding: 15px;
@@ -149,23 +121,19 @@
     <h1>🐱 ねこのまんまbot ステータス</h1>
 
     <div class="info-box">
-      <p><strong>📝 使い方：</strong>投稿したら、下の入力欄に今日と今月の投稿数を入力して「更新」ボタンを押してください。</p>
+      <p><strong>📡 自動更新:</strong> このページはGoogle Apps Scriptから自動でデータを取得しています。</p>
+      <button class="reload-button" onclick="loadData()">🔄 更新</button>
     </div>
 
-    <div class="manual-input">
-      <h3>📊 投稿数を入力</h3>
-      <div class="input-group">
-        <label for="todayCount">今日の投稿数:</label>
-        <input type="number" id="todayCount" min="0" value="0">
-      </div>
-      <div class="input-group">
-        <label for="monthlyCount">今月の投稿数:</label>
-        <input type="number" id="monthlyCount" min="0" value="0">
-      </div>
-      <button class="reload-button" onclick="updateStatus()">✨ 更新</button>
+    <div id="errorMessage" class="error-message" style="display: none;">
+      データの読み込みに失敗しました。しばらくしてから再度お試しください。
     </div>
 
-    <div id="statusContent">
+    <div id="loadingMessage" class="loading">
+      データを読み込んでいます...
+    </div>
+
+    <div id="statusContent" style="display: none;">
       <div class="status-box">
         <h2>📊 投稿状況</h2>
         <div class="status-item">
@@ -225,70 +193,85 @@
   </div>
 
   <script>
-    // 初期表示
-    updateTime();
-    loadSavedData();
+    // ここにGoogle Apps ScriptのウェブアプリURLを貼り付けてください
+    const API_URL = 'https://script.google.com/macros/s/AKfycbxIRYtc2nkc3eCHYOQExLxpcG2YbIUXZICXGYklf3IV7mLSHahH8JahQO7uN10zV12B/exec';
 
-    function updateStatus() {
-      const todayCount = parseInt(document.getElementById('todayCount').value) || 0;
-      const monthlyCount = parseInt(document.getElementById('monthlyCount').value) || 0;
-      const dailyLimit = 10;
-      const monthlyLimit = 300;
+    // ページ読み込み時にデータを取得
+    window.addEventListener('load', loadData);
 
+    // 5分ごとに自動更新
+    setInterval(loadData, 5 * 60 * 1000);
+
+    async function loadData() {
+      try {
+        document.getElementById('loadingMessage').style.display = 'block';
+        document.getElementById('statusContent').style.display = 'none';
+        document.getElementById('errorMessage').style.display = 'none';
+
+        const response = await fetch(API_URL);
+        const json = await response.json();
+
+        if (json.success) {
+          updateDisplay(json.data);
+          document.getElementById('loadingMessage').style.display = 'none';
+          document.getElementById('statusContent').style.display = 'block';
+        } else {
+          throw new Error(json.error || 'データ取得に失敗しました');
+        }
+
+      } catch (error) {
+        console.error('データ読み込みエラー:', error);
+        document.getElementById('loadingMessage').style.display = 'none';
+        document.getElementById('errorMessage').style.display = 'block';
+      }
+    }
+
+    function updateDisplay(data) {
       // 投稿数を更新
-      document.getElementById('todayDisplay').textContent = `${todayCount} / ${dailyLimit}`;
-      document.getElementById('monthlyDisplay').textContent = `${monthlyCount} / ${monthlyLimit}`;
+      document.getElementById('todayDisplay').textContent =
+        `${data.todayCount} / ${data.dailyLimit}`;
+      document.getElementById('monthlyDisplay').textContent =
+        `${data.monthlyCount} / ${data.monthlyLimit}`;
 
       // API制限チェック
-      const apiLimit = todayCount >= dailyLimit || monthlyCount >= monthlyLimit;
-      document.getElementById('apiLimitWarning').style.display = apiLimit ? 'block' : 'none';
+      const apiLimit = data.todayCount >= data.dailyLimit ||
+                       data.monthlyCount >= data.monthlyLimit;
+      document.getElementById('apiLimitWarning').style.display =
+        apiLimit ? 'block' : 'none';
 
-      // 通常ツイート数を更新
-      const regularCount = Math.max(0, todayCount - 4); // おはよう・note2段・おやすみを引く
-      document.getElementById('regularCount').textContent = `${regularCount}件`;
+      // 進捗状況を更新
+      const status = data.status;
 
-      // 進捗状況を自動判定
-      updateProgress(todayCount);
+      document.getElementById('morningStatus').textContent =
+        status.morning ? '✓ 投稿済み' : '未投稿';
+      document.getElementById('morningStatus').className =
+        status.morning ? 'status-value success' : 'status-value';
+
+      document.getElementById('noteCheckStatus').textContent =
+        status.noteChecked ? '✓ 完了' : '未実施';
+      document.getElementById('noteCheckStatus').className =
+        status.noteChecked ? 'status-value success' : 'status-value';
+
+      document.getElementById('notePostStatus').textContent =
+        status.notePosted ? '✓ 投稿済み' : '未投稿';
+      document.getElementById('notePostStatus').className =
+        status.notePosted ? 'status-value success' : 'status-value';
+
+      document.getElementById('regularCount').textContent =
+        `${status.regularCount}件`;
+
+      document.getElementById('nightStatus').textContent =
+        status.night ? '✓ 投稿済み' : '未投稿';
+      document.getElementById('nightStatus').className =
+        status.night ? 'status-value success' : 'status-value';
 
       // 時刻を更新
-      updateTime();
-
-      // ローカルストレージに保存
-      saveData(todayCount, monthlyCount);
+      updateTime(data.timestamp);
     }
 
-    function updateProgress(todayCount) {
-      const now = new Date();
-      const hour = now.getHours();
-
-      // おはようツイート（5:30以降）
-      if (hour >= 6) {
-        document.getElementById('morningStatus').textContent = '✓ 投稿済み';
-        document.getElementById('morningStatus').className = 'status-value success';
-      }
-
-      // noteチェック（18:15以降）
-      if (hour >= 18) {
-        document.getElementById('noteCheckStatus').textContent = '✓ 完了';
-        document.getElementById('noteCheckStatus').className = 'status-value success';
-      }
-
-      // note記事紹介（18:30以降）
-      if (hour >= 19) {
-        document.getElementById('notePostStatus').textContent = '✓ 投稿済み';
-        document.getElementById('notePostStatus').className = 'status-value success';
-      }
-
-      // おやすみツイート（21:30以降）
-      if (hour >= 22) {
-        document.getElementById('nightStatus').textContent = '✓ 投稿済み';
-        document.getElementById('nightStatus').className = 'status-value success';
-      }
-    }
-
-    function updateTime() {
-      const now = new Date();
-      const timeStr = now.toLocaleString('ja-JP', {
+    function updateTime(timestamp) {
+      const date = new Date(timestamp);
+      const timeStr = date.toLocaleString('ja-JP', {
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
@@ -298,45 +281,6 @@
       });
       document.getElementById('updateTime').textContent = timeStr;
     }
-
-    function saveData(todayCount, monthlyCount) {
-      const data = {
-        todayCount: todayCount,
-        monthlyCount: monthlyCount,
-        date: new Date().toDateString()
-      };
-      localStorage.setItem('botStatus', JSON.stringify(data));
-    }
-
-    function loadSavedData() {
-      const saved = localStorage.getItem('botStatus');
-      if (saved) {
-        try {
-          const data = JSON.parse(saved);
-          const today = new Date().toDateString();
-
-          // 今日のデータならロード
-          if (data.date === today) {
-            document.getElementById('todayCount').value = data.todayCount || 0;
-            document.getElementById('monthlyCount').value = data.monthlyCount || 0;
-            updateStatus();
-          } else {
-            // 日付が変わっていたら今日の投稿数をリセット
-            document.getElementById('todayCount').value = 0;
-            document.getElementById('monthlyCount').value = data.monthlyCount || 0;
-            updateStatus();
-          }
-        } catch (e) {
-          console.error('データ読み込みエラー:', e);
-        }
-      }
-    }
-
-    // 5分ごとに時刻を更新
-    setInterval(updateTime, 5 * 60 * 1000);
-
-    // 初期表示
-    updateStatus();
   </script>
 </body>
 </html>
